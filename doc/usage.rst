@@ -85,6 +85,32 @@ few command line options:
    default will be whatever ``pip`` uses as default (usually
    ``http://pypi.python.org/simple``).
 
+.. cmdoption:: --setuptools
+
+   Use setuptools instead of distribute in the virtualenv
+
+.. cmdoption:: --no-test
+
+   Skip running ``python setup.py test`` after dependencies and the
+   package is installed. This is useful if the Python code is packaged
+   using distutils and not setuptools.
+
+.. cmdoption:: --python <path>
+
+   Use a specific Python interpreter found in ``path`` as the
+   interpreter for the virtualenv. Default is to use the system
+   default, usually ``/usr/bin/python``.
+
+.. cmdoption:: --builtin-venv
+
+   Enable the use of the build-in ``venv`` module, i.e. use ``python
+   -m venv`` to create the virtualenv. For this to work, requires
+   Python 3.4 or later to be used, e.g. by using the option ``--python
+   /usr/bin/python3.4``. (Python 3.3 has the ``venv`` module, but
+   virtualenvs created with Python 3.3 are not bootstrapped with
+   setuptools or pip.)
+
+
 Advanced usage
 ==============
 

@@ -1,5 +1,7 @@
 # dh-virtualenv
 
+[![Build Status](https://travis-ci.org/spotify/dh-virtualenv.png)](https://travis-ci.org/spotify/dh-virtualenv)
+
 dh-virtualenv is a tool that aims to combine Debian packaging with
 self-contained virtualenv based Python deployments.
 
@@ -26,6 +28,14 @@ in to your build dependencies and write following `debian/rules` file:
 Note that you might need to provide
 additional build dependencies too, if your requirements require them.
 
+Also, you are able to define the root path for your source directory using
+`--sourcedirectory` or `-D` argument:
+
+      %:
+              dh $@ --with python-virtualenv --sourcedirectory=root/srv/application
+
+NOTE: Be aware that the configuration in debian/rules expects tabs instead of spaces!
+
 Once the package is built, you have a virtualenv contained in a Debian
 package and upon installation it gets placed, by default, under
 `/usr/share/python/<packagename>`.
@@ -45,6 +55,10 @@ effectively replaces following commands from the sequence:
 * `dh_pysupport`
 
 In the sequence the dh_virtualenv is inserted right after dh_perl.
+
+## Running tests
+
+    $ nosetests ./test/test_deployment.py
 
 ## License
 
