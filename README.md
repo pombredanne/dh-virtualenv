@@ -17,7 +17,7 @@ operating system.
 
 Using dh-virtualenv is fairly straightforward. First, you need to
 define the requirements of your package in `requirements.txt` file, in
-[the format defined by pip](http://www.pip-installer.org/en/latest/cookbook.html#requirements-files).
+[the format defined by pip](https://pip.pypa.io/en/latest/user_guide.html#requirements-files).
 
 To build a package using dh-virtualenv, you need to add dh-virtualenv
 in to your build dependencies and write following `debian/rules` file:
@@ -49,6 +49,7 @@ To do the packaging, the package extends debhelper's sequence by
 providing a new command in sequence, `dh_virtualenv`, which
 effectively replaces following commands from the sequence:
 
+* `dh_auto_clean`
 * `dh_auto_install`
 * `dh_python2`
 * `dh_pycentral`

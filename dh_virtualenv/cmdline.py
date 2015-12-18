@@ -41,7 +41,7 @@ class DebhelperOptionParser(OptionParser):
 
 def get_default_parser():
     usage = '%prog [options]'
-    parser = DebhelperOptionParser(usage, version='%prog 0.7')
+    parser = DebhelperOptionParser(usage, version='%prog 0.10')
     parser.add_option('-p', '--package', action='append',
                       help='act on the package named PACKAGE')
     parser.add_option('-N', '--no-package', action='append',
@@ -57,6 +57,10 @@ def get_default_parser():
                       help=('package to install before processing '
                             'requirements.txt.'),
                       default=[])
+    parser.add_option('--extra-pip-arg', action='append',
+                      help='Extra args for the pip binary.'
+                      'You can use this flag multiple times to pass in'
+                      ' parameters to pip.', default=[])
     parser.add_option('--pypi-url', help='Base URL of the PyPI server')
     parser.add_option('--python', help='The Python to use')
     parser.add_option('--builtin-venv', action='store_true',
@@ -68,6 +72,25 @@ def get_default_parser():
                       help="Don't run tests for the package. Useful "
                       "for example when you have packaged with distutils.",
                       default=True)
+    parser.add_option('-n', '--noscripts', action='store_false', dest='autoscripts',
+                      help="Do not modify postinst and similar scripts.",
+                      default=True)
+    parser.add_option('-S', '--use-system-packages', action='store_true',
+                      dest='use_system_packages',
+                      help="Set the --system-site-packages flag in virtualenv "
+                           "creation, allowing you to use system packages.",
+                      default=False)
+    parser.add_option('--skip-install', action='store_true',
+                      default=False,
+                      dest='skip_install',
+                      help="Skip running pip install within the source directory.");
+    parser.add_option('--install-suffix',
+                      dest='install_suffix',
+                      help="Override installation path suffix");
+    parser.add_option('--requirements',
+                      dest='requirements_filename',
+                      help='Specify the filename for requirementst.txt',
+                      default='requirements.txt')
 
     # Ignore user-specified option bundles
     parser.add_option('-O', help=SUPPRESS_HELP)

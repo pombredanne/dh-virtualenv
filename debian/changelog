@@ -1,3 +1,21 @@
+dh-virtualenv (0.10-1) unstable; urgency=low
+
+  * New upstream release
+
+ -- Jyrki Pulliainen <jyrki@spotify.com>  Thu, 20 Aug 2015 13:00:55 +0200
+
+dh-virtualenv (0.9-1) experimental; urgency=low
+
+  * New upstream release
+
+ -- Jyrki Pulliainen <jyrki@spotify.com>  Mon, 09 Mar 2015 09:59:26 +0100
+
+dh-virtualenv (0.8-1) experimental; urgency=low
+
+  * New upstream release
+
+ -- Jyrki Pulliainen <jyrki@spotify.com>  Thu, 02 Oct 2014 10:06:32 +0200
+
 dh-virtualenv (0.7-2) unstable; urgency=low
 
   * Fix virtualenv dependency. Closes: #751192

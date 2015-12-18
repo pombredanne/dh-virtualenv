@@ -28,19 +28,34 @@ DEFAULT_INSTALL_DIR = '/usr/share/python/'
 
 
 class Deployment(object):
-    def __init__(self, package, extra_urls=None, preinstall=None, pypi_url=None,
-                 setuptools=False, python=None, builtin_venv=False, sourcedirectory=None, verbose=False):
+    def __init__(self, package, extra_urls=[], preinstall=[],
+                 pypi_url=None, setuptools=False, python=None,
+                 builtin_venv=False, sourcedirectory=None, verbose=False,
+                 extra_pip_arg=[], use_system_packages=False,
+                 skip_install=False,
+                 install_suffix=None,
+                 requirements_filename='requirements.txt'):
+
         self.package = package
         install_root = os.environ.get(ROOT_ENV_KEY, DEFAULT_INSTALL_DIR)
-        self.virtualenv_install_dir = os.path.join(install_root, self.package)
+        self.install_suffix = install_suffix
+
         self.debian_root = os.path.join(
             'debian', package, install_root.lstrip('/'))
-        self.package_dir = os.path.join(self.debian_root, package)
+
+        if install_suffix is None:
+            self.virtualenv_install_dir = os.path.join(install_root, self.package)
+            self.package_dir = os.path.join(self.debian_root, package)
+        else:
+            self.virtualenv_install_dir = os.path.join(install_root, install_suffix)
+            self.package_dir = os.path.join(self.debian_root, install_suffix)
+
         self.bin_dir = os.path.join(self.package_dir, 'bin')
         self.local_bin_dir = os.path.join(self.package_dir, 'local', 'bin')
 
-        self.extra_urls = extra_urls if extra_urls is not None else []
-        self.preinstall = preinstall if preinstall is not None else []
+        self.extra_urls = extra_urls
+        self.preinstall = preinstall
+        self.extra_pip_arg = extra_pip_arg
         self.pypi_url = pypi_url
         self.log_file = tempfile.NamedTemporaryFile()
         self.verbose = verbose
@@ -48,6 +63,9 @@ class Deployment(object):
         self.python = python
         self.builtin_venv = builtin_venv
         self.sourcedirectory = '.' if sourcedirectory is None else sourcedirectory
+        self.use_system_packages = use_system_packages
+        self.skip_install = skip_install
+        self.requirements_filename = requirements_filename
 
     @classmethod
     def from_options(cls, package, options):
@@ -60,7 +78,12 @@ class Deployment(object):
                    python=options.python,
                    builtin_venv=options.builtin_venv,
                    sourcedirectory=options.sourcedirectory,
-                   verbose=verbose)
+                   verbose=verbose,
+                   extra_pip_arg=options.extra_pip_arg,
+                   use_system_packages=options.use_system_packages,
+                   skip_install=options.skip_install,
+                   install_suffix=options.install_suffix,
+                   requirements_filename=options.requirements_filename)
 
     def clean(self):
         shutil.rmtree(self.debian_root)
@@ -69,7 +92,12 @@ class Deployment(object):
         if self.builtin_venv:
             virtualenv = [self.python, '-m', 'venv']
         else:
-            virtualenv = ['virtualenv', '--no-site-packages']
+            virtualenv = ['virtualenv']
+
+            if self.use_system_packages:
+                virtualenv.append('--system-site-packages')
+            else:
+                virtualenv.append('--no-site-packages')
 
             if self.setuptools:
                 virtualenv.append('--setuptools')
@@ -83,17 +111,13 @@ class Deployment(object):
         virtualenv.append(self.package_dir)
         subprocess.check_call(virtualenv)
 
-        if self.builtin_venv:
-            # When using the venv module, pip is in local/bin
-            self.pip_prefix = [os.path.join(self.local_bin_dir, 'pip')]
-        else:
-            # We need to prefix the pip run with the location of python
-            # executable. Otherwise it would just blow up due to too long
-            # shebang-line.
-            self.pip_prefix = [
-                os.path.join(self.bin_dir, 'python'),
-                os.path.join(self.bin_dir, 'pip'),
-            ]
+        # We need to prefix the pip run with the location of python
+        # executable. Otherwise it would just blow up due to too long
+        # shebang-line.
+        self.pip_prefix = [
+            os.path.abspath(os.path.join(self.bin_dir, 'python')),
+            os.path.abspath(os.path.join(self.bin_dir, 'pip')),
+        ]
 
         if self.verbose:
             self.pip_prefix.append('-v')
@@ -105,7 +129,10 @@ class Deployment(object):
         self.pip_prefix.extend([
             '--extra-index-url={0}'.format(url) for url in self.extra_urls
         ])
-        self.pip_prefix.append('--log={0}'.format(self.log_file.name))
+        self.pip_prefix.append('--log={0}'.format(os.path.abspath(self.log_file.name)))
+        # Add in any user supplied pip args
+        if self.extra_pip_arg:
+            self.pip_prefix.extend(self.extra_pip_arg)
 
     def pip(self, *args):
         return self.pip_prefix + list(args)
@@ -118,15 +145,15 @@ class Deployment(object):
         if self.preinstall:
             subprocess.check_call(self.pip(*self.preinstall))
 
-        requirements_path = os.path.join(self.sourcedirectory, 'requirements.txt')
+        requirements_path = os.path.join(self.sourcedirectory, self.requirements_filename)
         if os.path.exists(requirements_path):
             subprocess.check_call(self.pip('-r', requirements_path))
 
     def run_tests(self):
-        python = os.path.join(self.bin_dir, 'python')
+        python = os.path.abspath(os.path.join(self.bin_dir, 'python'))
         setup_py = os.path.join(self.sourcedirectory, 'setup.py')
         if os.path.exists(setup_py):
-            subprocess.check_call([python, 'setup.py', 'test'])
+            subprocess.check_call([python, 'setup.py', 'test'], cwd=self.sourcedirectory)
 
     def fix_shebangs(self):
         """Translate /usr/bin/python and /usr/bin/env python sheband
@@ -153,19 +180,38 @@ class Deployment(object):
         """Replace the `VIRTUAL_ENV` path in bin/activate to reflect the
         post-install path of the virtualenv.
         """
-        virtualenv_path = 'VIRTUAL_ENV="{0}"'.format(
-            self.virtualenv_install_dir)
-        pattern = re.compile(r'^VIRTUAL_ENV=.*$', flags=re.M)
+        activate_settings = [
+            [
+                'VIRTUAL_ENV="{0}"'.format(self.virtualenv_install_dir),
+                r'^VIRTUAL_ENV=.*$',
+                "activate"
+            ],
+            [
+                'setenv VIRTUAL_ENV "{0}"'.format(self.virtualenv_install_dir),
+                r'^setenv VIRTUAL_ENV.*$',
+                "activate.csh"
+            ],
+            [
+                'set -gx VIRTUAL_ENV "{0}"'.format(self.virtualenv_install_dir),
+                r'^set -gx VIRTUAL_ENV.*$',
+                "activate.fish"
+            ],
+        ]
 
-        with open(os.path.join(self.bin_dir, 'activate'), 'r+') as fh:
-            content = pattern.sub(virtualenv_path, fh.read())
-            fh.seek(0)
-            fh.truncate()
-            fh.write(content)
+        for activate_args in activate_settings:
+            virtualenv_path = activate_args[0]
+            pattern = re.compile(activate_args[1], flags=re.M)
+            activate_file = activate_args[2]
+
+            with open(os.path.join(self.bin_dir, activate_file), 'r+') as fh:
+                content = pattern.sub(virtualenv_path, fh.read())
+                fh.seek(0)
+                fh.truncate()
+                fh.write(content)
 
     def install_package(self):
-        setup_path = os.path.join(self.sourcedirectory)
-        subprocess.check_call(self.pip(setup_path))
+        if not self.skip_install:
+            subprocess.check_call(self.pip('.'), cwd=os.path.abspath(self.sourcedirectory))
 
     def fix_local_symlinks(self):
         # The virtualenv might end up with a local folder that points outside the package
