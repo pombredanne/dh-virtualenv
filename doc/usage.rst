@@ -98,7 +98,12 @@ few command line options:
    to parse ``setup.py``. This flag can be provided multiple times to
    pass multiple packages for pre-install.
 
-.. cmdoption:: --pypi-url <URL>
+.. cmdoption:: --upgrade-pip <package>
+
+   Force upgrading pip to the latest available release. *Note:* This
+   can produce non-repeatable builds.
+
+.. cmdoption:: --index-url <URL>
 
    Base URL of the PyPI server. This flag can be used to pass in a
    custom URL to a PyPI mirror. It's useful if you for example have an
@@ -115,6 +120,12 @@ few command line options:
    As an example passing in --extra-pip-arg "--no-compile" to the
    override_dh_virtualenv section of the debian/rules file will
    disable the generation of pyc files.
+
+.. cmdoption:: --extra-virtualenv-arg <VIRTUALENV ARG>
+
+   Extra parameters to pass to the virtualenv executable. This is useful if
+   you need to change the behaviour of virtualenv during the packaging process.
+   You can use this flag multiple times to pass in different virtualenv flags.
 
 .. cmdoption:: --requirements <REQUIREMENTS FILE>
 
@@ -171,6 +182,11 @@ few command line options:
    -- typically, by the packages ``./debian/<packagename>.install``
    file, possibly into a directory structure unrelated to the location
    of the virtual environment.
+
+.. cmdoption:: --pypi-url <URL>
+
+   .. deprecated:: 0.12
+      Use :option:`--index-url` instead.
 
 
 Advanced usage
@@ -244,14 +260,16 @@ variable. Arguments can be passed to virtualenv by setting
 
 The default is to create the virtual environment with ``--no-site-packages``.
 
-Known incompabilities of the buildsystem
-----------------------------------------
+Overriding the requirements file can be done with the ``DH_REQUIREMENTS_FILE`` environment
+variable. For example:
 
-This section defines the known incompabilities with the sequencer
-approach. There are no guarantees that these all get addressed, but
-most of them, if not all, probably will.
+.. code-block:: make
 
-* No custom Python interpreter supported
-* ``Pyvenv`` of Python 3.x is not supported
-* No custom arguments outside requirements.txt can be passed to
-  ``pip``
+  export DH_REQUIREMENTS_FILE="requirements-deploy.txt"
+
+Additional parameters to ``pip`` can be defined in the ``DH_PIP_EXTRA_ARGS`` environment
+variable. For example:
+
+.. code-block:: make
+
+  export DH_PIP_EXTRA_ARGS="--no-index --find-links=./requirements/wheels"

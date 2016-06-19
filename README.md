@@ -13,6 +13,9 @@ the operating system provided Python packages. The only limiting
 factor is that you have to run the same Python interpreter as the
 operating system.
 
+For complete online documentation, see
+[the documentation online](https://dh-virtualenv.readthedocs.io/en/latest/).
+
 ## Using dh-virtualenv
 
 Using dh-virtualenv is fairly straightforward. First, you need to
@@ -61,9 +64,15 @@ In the sequence the dh_virtualenv is inserted right after dh_perl.
 
     $ nosetests ./test/test_deployment.py
 
+## Code of conduct
+This project adheres to the [Open Code of Conduct][code-of-conduct]. 
+By participating, you are expected to honor this code.
+
 ## License
 
 Copyright (c) 2013 Spotify AB
 
 dh-virtualenv is licensed under GPL v2 or later. Full license is
 available in the `LICENSE` file.
+
+[code-of-conduct]: https://github.com/spotify/code-of-conduct/blob/master/code-of-conduct.md

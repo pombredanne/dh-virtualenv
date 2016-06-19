@@ -22,6 +22,7 @@ import os
 import shutil
 import tempfile
 import textwrap
+import contextlib
 
 from mock import patch, call
 
@@ -53,54 +54,74 @@ def temporary_dir(fn):
     return _inner
 
 
+@contextlib.contextmanager
+def override_envvar(name, value):
+    """Set environment variable only during the test"""
+    def set_or_unset_envvar(name, value):
+        """Sets name to value. Unset name when value is None"""
+        if value is None:
+            del os.environ[name]
+        else:
+            os.environ[name] = value
+
+    previous = os.getenv(name)
+    set_or_unset_envvar(name, value)
+    try:
+        yield
+    finally:
+        set_or_unset_envvar(name, previous)
+
+
 def test_shebangs_fix():
-    deployment = Deployment('test')
-    temp = tempfile.NamedTemporaryFile()
-    # We cheat here a little. The fix_shebangs walks through the
-    # project directory, however we can just point to a single
-    # file, as the underlying mechanism is just grep -r.
-    deployment.bin_dir = temp.name
-
-    with open(temp.name, 'w') as f:
-        f.write('#!/usr/bin/python\n')
-
-    deployment.fix_shebangs()
-
-    with open(temp.name) as f:
-        eq_('#!/usr/share/python/test/bin/python\n', f.read())
-
-    with open(temp.name, 'w') as f:
-        f.write('#!/usr/bin/env python\n')
-
-    deployment.fix_shebangs()
-    with open(temp.name) as f:
-        eq_('#!/usr/share/python/test/bin/python\n', f.readline())
+    """Generate a test for each possible interpreter"""
+    for interpreter in ('python', 'pypy', 'ipy', 'jython'):
+        yield check_shebangs_fix, interpreter, '/usr/share/python/test'
 
 
 def test_shebangs_fix_overridden_root():
-    os.environ['DH_VIRTUALENV_INSTALL_ROOT'] = 'foo'
+    """Generate a test for each possible interpreter while overriding root"""
+    with override_envvar('DH_VIRTUALENV_INSTALL_ROOT', 'foo'):
+        for interpreter in ('python', 'pypy', 'ipy', 'jython'):
+            yield check_shebangs_fix, interpreter, 'foo/test'
+
+
+def test_shebangs_fix_special_chars_in_path():
+    """
+    Generate a test for each possible interpreter
+    while overriding root to contain special characters
+    """
+    with override_envvar('DH_VIRTUALENV_INSTALL_ROOT',
+                         'some-directory:with/special_chars'):
+        for interpreter in ('python', 'pypy', 'ipy', 'jython'):
+            yield (check_shebangs_fix, interpreter,
+                   'some-directory:with/special_chars/test')
+
+
+def check_shebangs_fix(interpreter, path):
+    """Checks shebang substitution for the given interpreter"""
     deployment = Deployment('test')
     temp = tempfile.NamedTemporaryFile()
     # We cheat here a little. The fix_shebangs walks through the
     # project directory, however we can just point to a single
     # file, as the underlying mechanism is just grep -r.
     deployment.bin_dir = temp.name
+    expected_shebang = '#!' + os.path.join(path, 'bin/python') + '\n'
 
     with open(temp.name, 'w') as f:
-        f.write('#!/usr/bin/python\n')
+        f.write('#!/usr/bin/{0}\n'.format(interpreter))
 
     deployment.fix_shebangs()
 
     with open(temp.name) as f:
-        eq_('#!foo/test/bin/python\n', f.read())
+        eq_(f.read(), expected_shebang)
 
     with open(temp.name, 'w') as f:
-        f.write('#!/usr/bin/env python\n')
+        f.write('#!/usr/bin/env {0}\n'.format(interpreter))
 
     deployment.fix_shebangs()
+
     with open(temp.name) as f:
-        eq_('#!foo/test/bin/python\n', f.readline())
-    del os.environ['DH_VIRTUALENV_INSTALL_ROOT']
+        eq_(f.readline(), expected_shebang)
 
 
 @patch('os.path.exists', lambda x: False)
@@ -129,6 +150,25 @@ def test_install_dependencies_with_preinstall(callmock):
     d.install_dependencies()
     callmock.assert_called_with(
         ['pip', 'install', 'foobar'])
+
+
+@patch('subprocess.check_call')
+def test_upgrade_pip(callmock):
+    d = Deployment('test', upgrade_pip=True)
+    d.pip_prefix = ['pip', 'install']
+    d.install_dependencies()
+    callmock.assert_called_with(
+        ['pip', 'install', '-U', 'pip'])
+
+
+@patch('subprocess.check_call')
+def test_upgrade_pip_with_preinstall(callmock):
+    d = Deployment('test', upgrade_pip=True, preinstall=['foobar'])
+    d.pip_prefix = ['pip', 'install']
+    d.install_dependencies()
+    callmock.assert_has_calls([
+        call(['pip', 'install', '-U', 'pip']),
+        call(['pip', 'install', 'foobar'])])
 
 
 @patch('os.path.exists', lambda x: True)
@@ -190,9 +230,20 @@ def test_create_venv_with_extra_urls(callmock):
 
 @patch('tempfile.NamedTemporaryFile', FakeTemporaryFile)
 @patch('subprocess.check_call')
+def test_create_venv_with_extra_virtualenv(callmock):
+    d = Deployment('test', extra_virtualenv_arg=["--never-download"])
+    d.create_virtualenv()
+    eq_('debian/test/usr/share/python/test', d.package_dir)
+    callmock.assert_called_with(['virtualenv', '--no-site-packages',
+                                 '--never-download',
+                                 'debian/test/usr/share/python/test'])
+
+
+@patch('tempfile.NamedTemporaryFile', FakeTemporaryFile)
+@patch('subprocess.check_call')
 def test_create_venv_with_custom_index_url(callmock):
     d = Deployment('test', extra_urls=['foo', 'bar'],
-                   pypi_url='http://example.com/simple')
+                   index_url='http://example.com/simple')
     d.create_virtualenv()
     eq_('debian/test/usr/share/python/test', d.package_dir)
     callmock.assert_called_with(['virtualenv', '--no-site-packages',
@@ -200,7 +251,7 @@ def test_create_venv_with_custom_index_url(callmock):
     eq_([PY_CMD,
          PIP_CMD,
          'install',
-         '--pypi-url=http://example.com/simple',
+         '--index-url=http://example.com/simple',
          '--extra-index-url=foo',
          '--extra-index-url=bar',
          '--log=' + os.path.abspath('foo')], d.pip_prefix)
@@ -361,7 +412,7 @@ def test_deployment_from_options():
         ])
         d = Deployment.from_options('foo', options)
         eq_(d.package, 'foo')
-        eq_(d.pypi_url, 'http://example.org')
+        eq_(d.index_url, 'http://example.org')
         eq_(d.extra_urls, ['http://example.com'])
 
 

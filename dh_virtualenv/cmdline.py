@@ -20,8 +20,9 @@
 """Helpers to handle debhelper command line options."""
 
 import os
+import warnings
 
-from optparse import OptionParser, SUPPRESS_HELP
+from optparse import OptionParser, SUPPRESS_HELP, OptionValueError
 
 
 class DebhelperOptionParser(OptionParser):
@@ -39,9 +40,24 @@ class DebhelperOptionParser(OptionParser):
         return OptionParser.parse_args(self, args, values)
 
 
+def _check_index_url(option, opt_str, value, parser, *args, **kwargs):
+    if opt_str == '--pypi-url':
+        # Work around 2.7 hiding the DeprecationWarning
+        with warnings.catch_warnings():
+            warnings.simplefilter('default')
+            warnings.warn('Use of --pypi-url is deprecated. Use --index-url intead',
+                          DeprecationWarning)
+    if parser.values.index_url:
+        # We've already set the index_url, which means that we have both
+        # --index-url and --pypi-url passed in.
+        raise OptionValueError('Deprecated --pypi-url and the new '
+                               '--index-url are mutually exclusive')
+    parser.values.index_url = value
+
+
 def get_default_parser():
     usage = '%prog [options]'
-    parser = DebhelperOptionParser(usage, version='%prog 0.10')
+    parser = DebhelperOptionParser(usage, version='%prog 0.11')
     parser.add_option('-p', '--package', action='append',
                       help='act on the package named PACKAGE')
     parser.add_option('-N', '--no-package', action='append',
@@ -57,11 +73,29 @@ def get_default_parser():
                       help=('package to install before processing '
                             'requirements.txt.'),
                       default=[])
+    parser.add_option('--upgrade-pip', action='store_true', default=False,
+                      help='Upgrade pip to the latest available version')
     parser.add_option('--extra-pip-arg', action='append',
                       help='Extra args for the pip binary.'
                       'You can use this flag multiple times to pass in'
                       ' parameters to pip.', default=[])
-    parser.add_option('--pypi-url', help='Base URL of the PyPI server')
+    parser.add_option('--extra-virtualenv-arg', action='append',
+                      help='Extra args for the virtualenv binary.'
+                      'You can use this flag multiple times to pass in'
+                      ' parameters to the virtualenv binary.', default=[])
+    parser.add_option('--pypi-url',
+                      help=('!!DEPRECATED, use --index-url instead!! '
+                            'Base URL of the PyPI server'),
+                      action='callback',
+                      dest='index_url',
+                      type='string',
+                      callback=_check_index_url)
+    parser.add_option('--index-url',
+                      help='Base URL of the PyPI server',
+                      action='callback',
+                      type='string',
+                      dest='index_url',
+                      callback=_check_index_url)
     parser.add_option('--python', help='The Python to use')
     parser.add_option('--builtin-venv', action='store_true',
                       help='Use the built-in venv module. Only works on '
@@ -83,10 +117,10 @@ def get_default_parser():
     parser.add_option('--skip-install', action='store_true',
                       default=False,
                       dest='skip_install',
-                      help="Skip running pip install within the source directory.");
+                      help="Skip running pip install within the source directory.")
     parser.add_option('--install-suffix',
                       dest='install_suffix',
-                      help="Override installation path suffix");
+                      help="Override installation path suffix")
     parser.add_option('--requirements',
                       dest='requirements_filename',
                       help='Specify the filename for requirementst.txt',

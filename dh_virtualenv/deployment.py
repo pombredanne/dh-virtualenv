@@ -25,13 +25,25 @@ import tempfile
 
 ROOT_ENV_KEY = 'DH_VIRTUALENV_INSTALL_ROOT'
 DEFAULT_INSTALL_DIR = '/usr/share/python/'
+PYTHON_INTERPRETERS = ['python', 'pypy', 'ipy', 'jython']
+_PYTHON_INTERPRETERS_REGEX = r'\(' + r'\|'.join(PYTHON_INTERPRETERS) + r'\)'
 
 
 class Deployment(object):
-    def __init__(self, package, extra_urls=[], preinstall=[],
-                 pypi_url=None, setuptools=False, python=None,
-                 builtin_venv=False, sourcedirectory=None, verbose=False,
-                 extra_pip_arg=[], use_system_packages=False,
+    def __init__(self,
+                 package,
+                 extra_urls=[],
+                 preinstall=[],
+                 upgrade_pip=False,
+                 index_url=None,
+                 setuptools=False,
+                 python=None,
+                 builtin_venv=False,
+                 sourcedirectory=None,
+                 verbose=False,
+                 extra_pip_arg=[],
+                 extra_virtualenv_arg=[],
+                 use_system_packages=False,
                  skip_install=False,
                  install_suffix=None,
                  requirements_filename='requirements.txt'):
@@ -55,8 +67,10 @@ class Deployment(object):
 
         self.extra_urls = extra_urls
         self.preinstall = preinstall
+        self.upgrade_pip = upgrade_pip
         self.extra_pip_arg = extra_pip_arg
-        self.pypi_url = pypi_url
+        self.extra_virtualenv_arg = extra_virtualenv_arg
+        self.index_url = index_url
         self.log_file = tempfile.NamedTemporaryFile()
         self.verbose = verbose
         self.setuptools = setuptools
@@ -73,13 +87,15 @@ class Deployment(object):
         return cls(package,
                    extra_urls=options.extra_index_url,
                    preinstall=options.preinstall,
-                   pypi_url=options.pypi_url,
+                   upgrade_pip=options.upgrade_pip,
+                   index_url=options.index_url,
                    setuptools=options.setuptools,
                    python=options.python,
                    builtin_venv=options.builtin_venv,
                    sourcedirectory=options.sourcedirectory,
                    verbose=verbose,
                    extra_pip_arg=options.extra_pip_arg,
+                   extra_virtualenv_arg=options.extra_virtualenv_arg,
                    use_system_packages=options.use_system_packages,
                    skip_install=options.skip_install,
                    install_suffix=options.install_suffix,
@@ -108,6 +124,10 @@ class Deployment(object):
             if self.python:
                 virtualenv.extend(('--python', self.python))
 
+            # Add in any user supplied pip args
+            if self.extra_virtualenv_arg:
+                virtualenv.extend(self.extra_virtualenv_arg)
+
         virtualenv.append(self.package_dir)
         subprocess.check_call(virtualenv)
 
@@ -124,8 +144,8 @@ class Deployment(object):
 
         self.pip_prefix.append('install')
 
-        if self.pypi_url:
-            self.pip_prefix.append('--pypi-url={0}'.format(self.pypi_url))
+        if self.index_url:
+            self.pip_prefix.append('--index-url={0}'.format(self.index_url))
         self.pip_prefix.extend([
             '--extra-index-url={0}'.format(url) for url in self.extra_urls
         ])
@@ -142,6 +162,8 @@ class Deployment(object):
         # a custom package to install dependencies (think something
         # along lines of setuptools), but that does not get installed
         # by default virtualenv.
+        if self.upgrade_pip:
+            subprocess.check_call(self.pip('-U', 'pip'))
         if self.preinstall:
             subprocess.check_call(self.pip(*self.preinstall))
 
@@ -155,26 +177,24 @@ class Deployment(object):
         if os.path.exists(setup_py):
             subprocess.check_call([python, 'setup.py', 'test'], cwd=self.sourcedirectory)
 
+    def find_script_files(self):
+        """Find list of files containing python shebangs in the bin directory"""
+        command = ['grep', '-l', '-r', '-e',
+                   r'^#!.*bin/\(env \)\?{0}'.format(_PYTHON_INTERPRETERS_REGEX),
+                   self.bin_dir]
+        grep_proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+        files, stderr = grep_proc.communicate()
+        return files.strip().split('\n')
+
     def fix_shebangs(self):
         """Translate /usr/bin/python and /usr/bin/env python sheband
         lines to point to our virtualenv python.
         """
-        grep_proc = subprocess.Popen(
-            ['grep', '-l', '-r', '-e', r'^#!.*bin/\(env \)\?python',
-             self.bin_dir],
-            stdout=subprocess.PIPE
-        )
-        files, stderr = grep_proc.communicate()
-        files = files.strip()
-        if not files:
-            return
-
         pythonpath = os.path.join(self.virtualenv_install_dir, 'bin/python')
-        for f in files.split('\n'):
-            subprocess.check_call(
-                ['sed', '-i', r's|^#!.*bin/\(env \)\?python|#!{0}|'.format(
-                    pythonpath),
-                 f])
+        for f in self.find_script_files():
+            regex = r's-^#!.*bin/\(env \)\?{names}-#!{pythonpath}-'\
+                .format(names=_PYTHON_INTERPRETERS_REGEX, pythonpath=re.escape(pythonpath))
+            subprocess.check_call(['sed', '-i', regex, f])
 
     def fix_activate_path(self):
         """Replace the `VIRTUAL_ENV` path in bin/activate to reflect the
