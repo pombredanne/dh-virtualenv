@@ -43,14 +43,15 @@ OPTIONS
 -v, --verbose				Turn on verbose mode.
 --extra-index-url			Pass extra index URL to pip
 --preinstall=PACKAGE			Preinstall a PACKAGE before running pip.
+--pip-tool=PIP_TOOL			Tool used to install requirements.
 --extra-pip-arg				Extra arg for the pip executable.
 --extra-virtualenv-arg			Extra arg for the virtualenv executable.
 --index-url				Base URL for PyPI server.
 --setuptools				Use setuptools instead of distribute.
 --install-suffix=SUFFIX			Override virttualenv installation suffix
---upgrage-pip				Force upgrade pip in virtualenv
+--upgrade-pip				Force upgrade pip in virtualenv
 --requirements=FILE			Use FILE for requirements
---no-test				Skip tests
+--setuptools-test			Run `setup.py test` upon build.
 --python=PATH				Use Python interpreter at PATH
 --builtin-venv				Use built-in venv of Python 3
 --skip-install				Don't run ``pip install .``
@@ -68,5 +69,5 @@ SEE ALSO
 Online documentation can be found at
 https://dh-virtualenv.readthedocs.io/en/latest.
 
-This package should also ship with documentation under
+This package should also ship with the complete documentation under
 `/usr/share/doc/dh-virtualenv`.

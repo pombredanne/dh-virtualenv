@@ -17,14 +17,25 @@
 # You should have received a copy of the GNU General Public License
 # along with dh-virtualenv. If not, see
 # <http://www.gnu.org/licenses/>.
+import io
 import os
 import warnings
-
-from StringIO import StringIO
 
 from dh_virtualenv import cmdline
 from mock import patch
 from nose.tools import eq_, ok_
+
+
+def get_mocked_stderr():
+    # optparse will try to print str(err) to sys.stderr, both on Python 2 and 3
+    # so we need to mock sys.stderr with the right *IO class
+    if str == bytes:
+        # We're on Python 2, where str(foo) is a bytes string
+        return io.BytesIO()
+
+    else:
+        # We're on Python 3, where str(foo) is a unicode string
+        return io.StringIO()
 
 
 @patch.object(cmdline.DebhelperOptionParser, 'error')
@@ -43,11 +54,10 @@ def test_test_debhelper_option_parsing():
 
 
 def test_parser_picks_up_DH_OPTIONS_from_environ():
-    os.environ['DH_OPTIONS'] = '--sourcedirectory=/tmp/'
-    parser = cmdline.get_default_parser()
-    opts, args = parser.parse_args()
-    eq_('/tmp/', opts.sourcedirectory)
-    del os.environ['DH_OPTIONS']
+    with patch.dict(os.environ, {'DH_OPTIONS': '--sourcedirectory=/tmp/'}):
+        parser = cmdline.get_default_parser()
+        opts, args = parser.parse_args()
+        eq_('/tmp/', opts.sourcedirectory)
 
 
 def test_get_default_parser():
@@ -71,14 +81,28 @@ def test_pypi_url_creates_deprecation_warning():
             '--pypi-url=http://example.com',
         ])
     eq_(len(w), 1)
-    ok_(issubclass(w[-1].category, DeprecationWarning))
-    eq_(str(w[-1].message), 'Use of --pypi-url is deprecated. Use --index-url intead')
+    ok_(issubclass(w[0].category, DeprecationWarning))
+    eq_(str(w[0].message), 'Use of --pypi-url is deprecated. Use --index-url instead')
+
+
+def test_no_test_creates_deprecation_warning():
+    parser = cmdline.get_default_parser()
+    with warnings.catch_warnings(record=True) as w:
+        parser.parse_args([
+            '--no-test',
+        ])
+    eq_(len(w), 1)
+    ok_(issubclass(w[0].category, DeprecationWarning))
+    eq_(str(w[0].message),
+        'Use of --no-test is deprecated and has no effect. '
+        'Use --setuptools-test if you want to execute '
+        '`setup.py test` during package build.')
 
 
 @patch('sys.exit')
 def test_pypi_url_index_url_conflict(exit_):
     parser = cmdline.get_default_parser()
-    f = StringIO()
+    f = get_mocked_stderr()
     with patch('sys.stderr', f):
         parser.parse_args([
             '--pypi-url=http://example.com',
@@ -89,16 +113,51 @@ def test_pypi_url_index_url_conflict(exit_):
     exit_.assert_called_once_with(2)
 
 
-def test_that_default_test_option_should_be_true():
+@patch('sys.exit')
+def test_test_flag_conflict(exit_):
+    parser = cmdline.get_default_parser()
+    f = get_mocked_stderr()
+    with patch('sys.stderr', f):
+        parser.parse_args([
+            '--no-test',
+            '--setuptools-test']
+        )
+    ok_('Deprecated --no-test and the new --setuptools-test are mutually '
+        'exclusive'
+        in f.getvalue())
+    exit_.assert_called_once_with(2)
+
+
+@patch('sys.exit')
+def test_pypi_url_index_url_conflict_independent_from_order(exit_):
+    parser = cmdline.get_default_parser()
+    f = get_mocked_stderr()
+    with patch('sys.stderr', f):
+        parser.parse_args([
+            '--index-url=http://example.org',
+            '--pypi-url=http://example.com']
+        )
+    ok_('Deprecated --pypi-url and the new --index-url are mutually exclusive'
+        in f.getvalue())
+    exit_.assert_called_once_with(2)
+
+
+def test_that_default_test_option_should_be_false():
     parser = cmdline.get_default_parser()
     opts, args = parser.parse_args()
-    eq_(True, opts.test)
+    eq_(False, opts.setuptools_test)
 
 
-def test_that_test_option_can_be_false():
+def test_that_test_option_can_be_true():
+    parser = cmdline.get_default_parser()
+    opts, args = parser.parse_args(['--setuptools-test'])
+    eq_(True, opts.setuptools_test)
+
+
+def test_that_no_test_option_has_no_effect():
     parser = cmdline.get_default_parser()
     opts, args = parser.parse_args(['--no-test'])
-    eq_(False, opts.test)
+    eq_(False, opts.setuptools_test)
 
 
 def test_that_default_use_system_packages_option_should_be_false():

@@ -41,7 +41,7 @@ NOTE: Be aware that the configuration in debian/rules expects tabs instead of sp
 
 Once the package is built, you have a virtualenv contained in a Debian
 package and upon installation it gets placed, by default, under
-`/usr/share/python/<packagename>`.
+`/opt/venvs/<packagename>`.
 
 For more information and usage documentation, check the accompanying
 documentation in the `doc` folder.
@@ -58,14 +58,15 @@ effectively replaces following commands from the sequence:
 * `dh_pycentral`
 * `dh_pysupport`
 
-In the sequence the dh_virtualenv is inserted right after dh_perl.
+In the sequence the `dh_virtualenv` is inserted right after 
+`dh_installinit`.
 
 ## Running tests
 
     $ nosetests ./test/test_deployment.py
 
 ## Code of conduct
-This project adheres to the [Open Code of Conduct][code-of-conduct]. 
+This project adheres to the [Open Code of Conduct][code-of-conduct].
 By participating, you are expected to honor this code.
 
 ## License

@@ -38,9 +38,9 @@ sub get_install_root {
 sub get_venv_builddir {
     my $this = shift;
     my $builddir = $this->get_builddir();
-    my $sourcepackage = $this->sourcepackage();
+    my $virtualenv_name = $ENV{DH_VIRTUALENV_INSTALL_SUFFIX} || $this->sourcepackage();
     my $prefix = $this->get_install_root();
-    return "$builddir$prefix/$sourcepackage";
+    return "$builddir$prefix/$virtualenv_name";
 }
 
 sub get_exec {
@@ -91,12 +91,23 @@ sub build {
     my $python = $this->get_python();
     my $pip = $this->get_pip();
 
+    if (defined $ENV{DH_UPGRADE_PIP}) {
+        my $version = length $ENV{DH_UPGRADE_PIP} && '=='.$ENV{DH_UPGRADE_PIP} || '';
+        $this->doit_in_sourcedir(
+            $python, $pip, 'install', '-U', 'pip' . $version);
+    }
+    if (defined $ENV{DH_UPGRADE_SETUPTOOLS}) {
+        my $version = length $ENV{DH_UPGRADE_SETUPTOOLS} && '=='.$ENV{DH_UPGRADE_SETUPTOOLS} || '';
+        $this->doit_in_sourcedir(
+            $python, $pip, 'install', '-U', 'setuptools' . $version);
+    }
+    if (defined $ENV{DH_UPGRADE_WHEEL}) {
+        my $version = length $ENV{DH_UPGRADE_WHEEL} && '=='.$ENV{DH_UPGRADE_WHEEL} || '';
+        $this->doit_in_sourcedir(
+            $python, $pip, 'install', '-U', 'wheel' . $version);
+    }
     $this->doit_in_sourcedir(
         $python, $pip, 'install', '-r', $reqfile, @pipargs);
-
-    $this->doit_in_sourcedir(
-        $python, $pip, 'install', '.');
-
 }
 
 sub test {
@@ -115,6 +126,9 @@ sub install {
     my $venv = $this->get_venv_builddir();
     my $prefix = $this->get_install_root();
 
+    $this->doit_in_sourcedir(
+        $python, $pip, 'install', '.');
+
     # Before we copy files, let's make the symlinks in the 'usr/local'
     # relative to the build path.
     my @files_in_local = <"$venv/local/*">;
@@ -131,11 +145,20 @@ sub install {
     $this->doit_in_builddir('mkdir', '-p', $destdir);
     $this->doit_in_builddir('cp', '-r', '-T', '.', $destdir);
 
-    my $new_python = "$prefix/$sourcepackage/bin/python";
+    my $new_python = undef;
+    my @binaries = undef;
+
+    if (defined $ENV{DH_VIRTUALENV_INSTALL_SUFFIX}) {
+        $new_python = "$prefix/" . $ENV{DH_VIRTUALENV_INSTALL_SUFFIX} . "/bin/python";
+        my $curdir = "$destdir$prefix" . $ENV{DH_VIRTUALENV_INSTALL_SUFFIX} . "/bin/*";
+        @binaries = glob($curdir);
+    } else {
+        $new_python = "$prefix/$sourcepackage/bin/python";
+        @binaries = <"$destdir$prefix/$sourcepackage/bin/*">;
+    }
 
     # Fix shebangs so that we use the Python in the final location
     # instead of the Python in the build directory
-    my @binaries = <"$destdir$prefix/$sourcepackage/bin/*">;
     {
         local $^I = q{};
         local @ARGV = grep { -T } @binaries;
